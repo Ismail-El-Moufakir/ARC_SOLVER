@@ -1,0 +1,174 @@
+<meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport' />
+<div id="page0">
+    <div>loading</div>
+</div>
+<script>
+    var debug1 = function (msg) {
+        var z = document.createElement("div");
+        z.innerText = msg;
+        document.getElementById("page0").appendChild(z);
+    };
+    debug1("each");
+    var each = function (iter, cback) {
+        return Array.prototype.forEach.call(iter, cback);
+    };
+    debug1("onerror");
+    window.onerror = function () {
+        each(arguments, function (aa) {
+            alert(aa);
+        });
+        alert(JSON.stringify(arguments));
+        each(arguments, function (aa) {
+            alert(JSON.stringify(aa));
+        });
+    };
+    debug1("finished");
+    document.getElementById("page0").style.display = "none";
+</script>
+
+<!-- /////////////////////////////////////////////////// -->
+
+<div>
+    <select id="fold">
+        <option value="training">training</option>
+        <option selected value="evaluation">evaluation</option>
+    </select>
+    <input type="text" id="kode" size="9" value="ac0c5833" style="width:100px" />
+    <button onclick="tampil()">Show</button>
+</div>
+<style>
+    .cell {
+        width: 6px;
+        height: 6px;
+    }
+
+    .cell-border {
+        border: 1px solid green;
+        border-collapse: collapse;
+    }
+
+    .board {
+        border-collapse: collapse;
+        display: inline-block;
+        border: 3px solid green;
+        padding: 3px;
+        margin: 1px;
+    }
+
+    .symbol_0 {
+        background-color: white;
+    }
+
+    .symbol_1 {
+        background-color: red;
+    }
+
+    .symbol_2 {
+        background-color: lime;
+    }
+
+    .symbol_3 {
+        background-color: blue;
+    }
+
+    .symbol_4 {
+        background-color: brown;
+    }
+
+    .symbol_5 {
+        background-color: grey;
+    }
+
+    .symbol_6 {
+        background-color: magenta;
+    }
+
+    .symbol_7 {
+        background-color: black;
+    }
+
+    .symbol_8 {
+        background-color: cyan;
+    }
+
+    .symbol_9 {
+        background-color: yellow;
+    }
+</style>
+<div id="viewer"></div>
+<button onclick="window.scrollTo(0, 0);">TOP</button>
+<script>
+    function createElement(tagname, innerHTML) {
+        var elem = document.createElement(tagname);
+        if (innerHTML) elem.innerHTML = innerHTML;
+        return elem;
+    }
+    function tabel(grid) {
+        var root = createElement('table');
+        root.className = 'board';
+        grid.forEach(function (row) {
+            var tr = createElement('tr');
+            row.forEach(function (cell) {
+                var td = createElement('td');
+                td.className = 'cell-border' + ' symbol_' + cell;
+                var inner = createElement('div');
+                inner.className = 'cell';
+                td.appendChild(inner);
+                tr.appendChild(td);
+            });
+            root.appendChild(tr);
+        });
+        return root;
+    }
+    function pair(i, o) {
+        var div = createElement('div');
+        div.appendChild(i);
+        div.appendChild(o);
+        return div;
+    }
+    function render(json) {
+        for (var ii = 0; ii < json.train.length; ii++) {
+            var io = json.train[ii];
+            viewer.appendChild(createElement('hr'));
+            viewer.appendChild(createElement('div', 'train[' + ii + '] ' + (ii + 1)));
+            viewer.appendChild(pair(tabel(io.input), tabel(io.output)));
+        }
+        viewer.appendChild(createElement('hr'));
+        viewer.appendChild(createElement('hr'));
+        viewer.appendChild(createElement('hr'));
+        for (var ii = 0; ii < json.test.length; ii++) {
+            var io = json.test[ii];
+            viewer.appendChild(createElement('hr'));
+            viewer.appendChild(createElement('div', 'test[' + ii + '] ' + (ii + 1)));
+            viewer.appendChild(pair(tabel(io.input), tabel(io.output)));
+        }
+    }
+</script>
+<script>
+    function tampil() {
+        var fold = document.getElementById('fold').value;
+        var judul = document.getElementById('kode').value;
+        if (fold && judul) {
+            var viewer = document.getElementById('viewer');
+            var url = 'https://raw.githubusercontent.com/fchollet/ARC-AGI/master/data/' + fold + '/' + judul + '.json';
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url);
+            xhr.onload = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    var json = xhr.responseText || xhr.response;
+                    if (json) {
+                        json = JSON.parse(json);
+                        if (json) {
+                            viewer.innerHTML = url;
+                            render(json);
+                            return;
+                        }
+                    }
+                }
+                viewer.innerText = xhr.statusText || xhr.status || xhr.readyState || xhr.responseText || xhr.response;
+            };
+            viewer.innerText = url;
+            xhr.send();
+        }
+    }
+</script>
