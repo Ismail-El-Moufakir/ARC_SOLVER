@@ -3,6 +3,7 @@ from collections import deque
 import graphviz
 import numpy as np
 import random
+
 sys.path.insert(0,r"../object_representation")
 from Dsl import *
 import matplotlib.pyplot as plt
@@ -40,12 +41,14 @@ FUNCTIONS = {
     
 }
 
-TERMINALS = ["Object", "h", "v", "max", "min", "left", "right", "top", "bottom", "asc", "desc"] + [i for i in range(9)] 
+TERMINALS = ["Object", "h", "v", "max", "min", "left", "right", "top", "bottom", "asc", "desc","coordinates"] + [i for i in range(9)] 
  # Assuming colors are represented by integers 0-8
 FUNC_PRIMITIVES  = [concat, Combine, arrange, updateColor, getColor, filter_by_color, filter_by_size, get_First_Object,
                     No_Background, mirror, place,order_position_Right, order_position_Left, order_position_Top, order_position_Bottom,
                     exclude_object, Insert_Line]
-
+FILTER_PRIMITIVES = [filter_by_color, filter_by_size, exclude_object, order_position_Right, order_position_Left, order_position_Top, order_position_Bottom,No_Background]
+TRANSFORM_PRIMITIVES = [mirror, place, Insert_Line]
+ENSEMBLE_PRIMITIVES = [concat, Combine, arrange]
 COORD_PRIMITIVES = [Top_Left_Coord, Top_Right_Coord, Bot_Left_Coord, Bot_Right_Coord]
 DICT_FUNC_WITH_ARGS = {
     updateColor: range(9),
@@ -70,7 +73,24 @@ class Individual:
     def __init__(self, root = None):
         self.Root = root
         self.Id = 0
+    def _get_depth(self) -> int:
+        # Handle an empty tree first
+        if getattr(self, "Root", None) is None:
+            return 0
 
+        queue = deque([(self.Root, 0)])   # (node, depth)
+        max_depth = 0
+
+        while queue:
+            node, depth = queue.popleft()
+            max_depth = max(max_depth, depth)
+
+            # Safely iterate over children if they exist
+            for child in getattr(node, "children", ()):
+                if child is not None:
+                    queue.append((child, depth + 1))
+
+        return max_depth
     def Show_Tree(self):
         queue = deque()
         dot = graphviz.Digraph(comment='The Tree Structure')
@@ -123,7 +143,7 @@ class Individual:
             }
             if node.Value in handlers:
                 result = handlers[node.Value](in_Task)
-                print(f"[depth {depth}] '{node.Value}' → {result}")
+                #print(f"[depth {depth}] '{node.Value}' → {result}")
                 return result
             raise ValueError(f"Unknown terminal string '{node.Value}'")
 
@@ -136,11 +156,11 @@ class Individual:
                 raise ValueError(f"Function node at depth {depth} has no arguments: {node.Value.__name__}")
             elif len(args) == 1:
                 result = node.Value(args[0])
-                print(f"[depth {depth}] {node.Value.__name__}({args[0]}) → {result}")
+               # print(f"[depth {depth}] {node.Value.__name__}({args[0]}) → {result}")
                 return result
             elif len(args) == 2:
                 result = node.Value(args[0], args[1])
-                print(f"[depth {depth}] {node.Value.__name__}({args[0]}, {args[1]}) → {result}")
+                #print(f"[depth {depth}] {node.Value.__name__}({args[0]}, {args[1]}) → {result}")
                 return result
             else:
                 raise ValueError(f"Function node at depth {depth} has invalid number of arguments ({len(args)}): {node.Value.__name__}")
@@ -166,7 +186,7 @@ class Individual:
         self._Add_Node(self.Root, max_depth)
 
         leaves = get_leaf_nodes(self.Root)
-        print(f"Leaf nodes found: {len(leaves)}")
+        #print(f"Leaf nodes found: {len(leaves)}")
 
     
         for leaf in leaves:
@@ -211,56 +231,90 @@ class Individual:
     def _match_Args(self,function:Callable):
             return DICT_FUNC_WITH_ARGS[function]
     def _Add_Node(self, node, max_depth):
-        
-        # Check if max_depth is reached or node is a terminal (arity 0)
+        """
+        Recursively expands `node` until `max_depth` is reached,
+        while ensuring that no child node has the same `Value`
+        (i.e. function object) as its parent.
+        """
+        # ── 1. Stop if depth exhausted or node is already terminal ─────────────
         if max_depth <= 0:
-            # Only set to "object" if the node's type matches the parent node's required argument type
             if hasattr(node.Value, '__name__') and node.Value.__name__ == 'Object':
-                node.Value = "Object"  # Set to terminal value only if type matches
+                node.Value = "Object"
             return
 
-        # Get the arity and input types of the current node
-        if hasattr(node.Value, '__name__'):
-            node_arity = FUNCTIONS.get(node.Value.__name__, {}).get("arity", 0)
-            input_types = FUNCTIONS.get(node.Value.__name__, {}).get("input_types", [])
+        # ── 2. Gather meta-info for the current (parent) node ──────────────────
+        if not hasattr(node.Value, '__name__'):
+            return  # nothing to expand on a literal/terminal
 
-            # Ensure input_types matches the arity
-            if len(input_types) != node_arity:
-                raise ValueError(f"Input types length {len(input_types)} does not match arity {node_arity} for {node.Value.__name__}")
+        parent_func  = node.Value                         # convenience alias
+        meta         = FUNCTIONS.get(parent_func.__name__, {})
+        node_arity   = meta.get("arity", 0)
+        input_types  = meta.get("input_types", [])
 
-            # Handle children based on arity and input types
-            for arg_idx, arg_type in enumerate(input_types):
-                possible_functions = []
-                if node.Value == Add_Object:
-                    possible_functions  = FUNC_PRIMITIVES
-                elif arg_type == 'List[Object]'or arg_type == 'Object':
-                    possible_functions = [func for func in FUNC_PRIMITIVES if FUNCTIONS.get(func.__name__, {}).get("output_types") == arg_type]
-                    print(f"Possible functions for {arg_type}: {[func.__name__ for func in possible_functions]}")
-                    np.random.shuffle(possible_functions)  
-                elif arg_type == 'Tuple[int, int]':
-                    possible_functions = [func for func in COORD_PRIMITIVES if FUNCTIONS.get(func.__name__, {}).get("output_types") == arg_type]
-                    print(f"Possible functions for {arg_type}: {[func.__name__ for func in possible_functions]}")
-                    np.random.shuffle(possible_functions)
-                else:
-                    possible_args = self._match_Args(node.Value)
-                    if not possible_args:
-                        raise ValueError(f"No matching arguments found for {node.Value.__name__} at index {arg_idx}")
-                    elif possible_args == "Object":
-                        node.childeren.append(random.choice([func for func in FUNC_PRIMITIVES if FUNCTIONS.get(func.__name__, {}).get("output_types") == "Object"]))
-                    elif possible_args == "coordinates":
-                        node.children.append(Node(random.choice(COORD_PRIMITIVES)))
-                    else:
-                        node.children.append(Node(random.choice(possible_args)))
-                        continue
+        if len(input_types) != node_arity:
+            raise ValueError(
+                f"Input types length {len(input_types)} != arity {node_arity} for {parent_func.__name__}"
+            )
 
-                if not possible_functions:
-                    raise ValueError(f"No suitable functions found for type {arg_type} at index {arg_idx}")
-                node.children.append(Node(random.choice(possible_functions)))
+        # ── 3. Build each child, respecting type + NON-NEST constraint ─────────
+        for arg_idx, arg_type in enumerate(input_types):
 
-            # Recursive call to add children nodes
-            for child in node.children:
-                self._Add_Node(child, max_depth - 1)
+            # 3-A. Pick a candidate pool for this argument type
+            if parent_func == Add_Object:
+                pool = list(FUNC_PRIMITIVES)
+            elif arg_type in ('List[Object]', 'Object'):
+                pool = [
+                    f for f in FUNC_PRIMITIVES
+                    if FUNCTIONS.get(f.__name__, {}).get("output_types") == arg_type
+                ]
+            elif arg_type == 'Tuple[int, int]':
+                pool = [
+                    f for f in COORD_PRIMITIVES
+                    if FUNCTIONS.get(f.__name__, {}).get("output_types") == arg_type
+                ]
+            else:
+                # use argument‐matching helper for literal/primitive choices
+                possible_args = self._match_Args(parent_func)
+                if not possible_args:
+                    raise ValueError(
+                        f"No matching arguments for {parent_func.__name__} at index {arg_idx}"
+                    )
+                if possible_args == "Object":
+                    pool = [
+                        f for f in FUNC_PRIMITIVES
+                        if FUNCTIONS.get(f.__name__, {}).get("output_types") == "Object"
+                    ]
+                elif possible_args == "coordinates":
+                    pool = list(COORD_PRIMITIVES)
+                else:  # literal constants
+                    literal_choice = random.choice(possible_args)
+                    node.children.append(Node(literal_choice))
+                    continue
 
+            # 3-B. Enforce the NON-NEST rule ➜ drop the parent from the pool
+            pool = [f for f in pool if f != parent_func]
+
+            # 3-C. If empty, attempt a broader fallback (same output type)
+            if not pool:
+                desired_out = FUNCTIONS.get(parent_func.__name__, {}).get("output_types")
+                pool = [
+                    f for f in FUNC_PRIMITIVES + COORD_PRIMITIVES
+                    if f != parent_func
+                    and FUNCTIONS.get(f.__name__, {}).get("output_types") == desired_out
+                ]
+
+            if not pool:
+                raise ValueError(
+                    f"No suitable child functions for type {arg_type} "
+                    f"without duplicating parent {parent_func.__name__}"
+                )
+
+            # 3-D. Pick and attach the child
+            node.children.append(Node(random.choice(pool)))
+
+        # ── 4. Recurse on children (depth-1) ───────────────────────────────────
+        for child in node.children:
+            self._Add_Node(child, max_depth - 1)
 
 
 
@@ -314,3 +368,6 @@ exlude_Object_Node = Node(exclude_object, No_Background_Node_3, filter_by_size_N
 O = Add_Object_Node = Node(Add_Object, exlude_Object_Node,Insert_Line_Node_4 )
 '''
 
+'''Ind = Individual()
+Ind.Random_Instance()
+Ind.Show_Tree().render('tree', format='pdf', cleanup=True,view= True)'''

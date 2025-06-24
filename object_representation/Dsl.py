@@ -53,7 +53,8 @@ def filter_by_color(set:List[Object],color:int) -> List[Object]:
      if not set:
             raise ValueError("The set is empty.")
      for obj in set:
-        print(f"Object at {obj.Position} with color {obj.color} and shape matrix:\n{obj.Shape_Mtx}")
+          pass
+        # print(f"Object at {obj.Position} with color {obj.color} and shape matrix:\n{obj.Shape_Mtx}")
      return [obj for obj in set if obj.color == color] 
 def filter_by_size(Set:List[Object],arg:str) -> Object:
      if not Set:
@@ -118,14 +119,7 @@ def order_position_Bottom(Set: List[Object], order: str = 'asc') -> List[Object]
   
 
 
-
-def get_First_Object(Set: List[Object]) -> Object:
-    '''
-    Get the first object in a set.
-    '''
-    if not Set:
-        raise ValueError("The set is empty.")
-    return Set[0]     
+   
 
 def Top_Left_Coord(obj: Object):
     '''
@@ -148,6 +142,7 @@ def Bot_Right_Coord(obj: Object):
     '''
     return (obj.Position[0] + obj.Shape_Mtx.shape[0],
             obj.Position[1] + obj.Shape_Mtx.shape[1])
+
 def No_Background(Set: list[Object]):
      '''
      Remove background from a set of objects.
@@ -174,7 +169,16 @@ def exclude_object(objects: List["Object"], target: "Object") -> List["Object"]:
             getattr(o.Shape_Mtx, "shape", None) == getattr(target.Shape_Mtx, "shape", None)
         )
     ]
-          
+def get_First_Object(Set: List[Object]) -> Object:
+    '''
+    Get the first object in a set.
+    '''
+    if not Set:
+        raise ValueError("The set is empty.")
+    return Set[0]            
+
+
+
 #transformation
 def mirror(obj:Object, axis:str):
      '''
@@ -183,7 +187,7 @@ def mirror(obj:Object, axis:str):
      '''
      new_Shape_Mtx = []
      if axis not in ['h', 'v']:
-          raise ValueError("Axis must be 'h' for horizontal or 'v' for vertical.")
+          raise TypeError("Axis must be 'h' for horizontal or 'v' for vertical.")
      if axis == 'h':
           new_Shape_Mtx = np.flipud(obj.Shape_Mtx)
      elif axis == 'v':

@@ -94,7 +94,7 @@ class Grid:
 
         H, W = bottom - top, right - left
         grid_Mtx = np.zeros((H, W), dtype=self.Layers[0].Shape_Mtx.dtype)
-        print(f"Constructing grid of size {H}×{W}")
+        #print(f"Constructing grid of size {H}×{W}")
 
         # -----------------------------------------------------------------
         #  Blit every layer onto the canvas in order
