@@ -180,25 +180,32 @@ def get_First_Object(Set: List[Object]) -> Object:
 
 
 #transformation
-def mirror(obj:Object, axis:str):
+def mirror(objs:List[Object], axis:str):
      '''
      Mirror an object along a specified axis ('h' for horizontal, 'v' for vertical).
      --> obj
      '''
-     new_Shape_Mtx = []
-     if axis not in ['h', 'v']:
-          raise TypeError("Axis must be 'h' for horizontal or 'v' for vertical.")
-     if axis == 'h':
-          new_Shape_Mtx = np.flipud(obj.Shape_Mtx)
-     elif axis == 'v':
-          new_Shape_Mtx = np.fliplr(obj.Shape_Mtx)
-     new_obj = Object(
-          Position=obj.Position,
-          Shape_Coords=obj.Shape_Coords,
-          Color=obj.color,
-          id=obj.id
-     )
-     new_obj.Shape_Mtx = new_Shape_Mtx
+     if not objs:
+            raise ValueError("The set is empty.")
+     else:
+          set =  []
+          for obj in objs:
+            new_Shape_Mtx = []
+            if axis not in ['h', 'v']:
+                raise TypeError("Axis must be 'h' for horizontal or 'v' for vertical.")
+            if axis == 'h':
+                new_Shape_Mtx = np.flipud(obj.Shape_Mtx)
+            elif axis == 'v':
+                new_Shape_Mtx = np.fliplr(obj.Shape_Mtx)
+            new_obj = Object(
+                Position=obj.Position,
+                Shape_Coords=obj.Shape_Coords,
+                Color=obj.color,
+                id=obj.id
+            )
+            new_obj.Shape_Mtx = new_Shape_Mtx
+            set.append(new_obj)
+            return set
      return new_obj
 def place(obj:Object, Position):
      '''
@@ -487,56 +494,70 @@ def arrange(objs: List["Object"], spacing: int = 0) -> List["Object"]:
 
     return arranged
 #operations
-def Insert_Line(obj: Object, border: str):
+def Insert_Line_Right(objs:List[Object]):
+    return Insert_Line(objs, 'right')
+def Insert_Line_Left(objs:List[Object]):
+    return Insert_Line(objs, 'left')
+def Insert_Line_Top(objs:List[Object]):
+    return Insert_Line(objs, 'top')
+def Insert_Line_Bottom(objs:List[Object]):
+    return Insert_Line(objs, 'bottom')
+
+def Insert_Line(objs: List[Object], border: str):
      if border not in ['top', 'bottom', 'left', 'right']:
           raise ValueError("Border must be one of: 'top', 'bottom', 'left', 'right'.")
+     elif not objs:
+          raise ValueError("The set is empty.")
      else:
-            new_Shape_Mtx = obj.Shape_Mtx.copy()
-            changed = False
-            Position = obj.Position
-            if border == 'top':
-              for j in range(new_Shape_Mtx.shape[1]):
-                   if new_Shape_Mtx[0][j] != 0:
-                        new_Shape_Mtx[1][j] = new_Shape_Mtx[0][j]
-                        changed = True
-                        Position = (Position[0] + 1, Position[1])  # Update position
-              if changed:
-                   new_Shape_Mtx = new_Shape_Mtx[1:,:]  # Remove the first row
-            elif border == 'bottom':
-                for j in range(new_Shape_Mtx.shape[1]):
-                     if new_Shape_Mtx[-1][j] != 0:
-                            new_Shape_Mtx[-2][j] = new_Shape_Mtx[-1][j]
+            set = []
+            for obj in objs:
+                new_Shape_Mtx = obj.Shape_Mtx.copy()
+                changed = False
+                Position = obj.Position
+                if border == 'top':
+                 for j in range(new_Shape_Mtx.shape[1]):
+                    if new_Shape_Mtx[0][j] != 0:
+                            new_Shape_Mtx[1][j] = new_Shape_Mtx[0][j]
                             changed = True
-                Position = (Position[0], Position[1])
+                            Position = (Position[0] + 1, Position[1])  # Update position
                 if changed:
-                     new_Shape_Mtx = new_Shape_Mtx[:-1,:]
-            elif border == 'left':
-                for i in range(new_Shape_Mtx.shape[0]):
-                     if new_Shape_Mtx[i][0] != 0:
-                            new_Shape_Mtx[i][1] = new_Shape_Mtx[i][0]
-                            changed = True
-                Position = (Position[0], Position[1] + 1)
+                    new_Shape_Mtx = new_Shape_Mtx[1:,:]  # Remove the first row
+                elif border == 'bottom':
+                    for j in range(new_Shape_Mtx.shape[1]):
+                        if new_Shape_Mtx[-1][j] != 0:
+                                new_Shape_Mtx[-2][j] = new_Shape_Mtx[-1][j]
+                                changed = True
+                    Position = (Position[0], Position[1])
+                    if changed:
+                        new_Shape_Mtx = new_Shape_Mtx[:-1,:]
+                elif border == 'left':
+                    for i in range(new_Shape_Mtx.shape[0]):
+                        if new_Shape_Mtx[i][0] != 0:
+                                new_Shape_Mtx[i][1] = new_Shape_Mtx[i][0]
+                                changed = True
+                    Position = (Position[0], Position[1] + 1)
+                    if changed:
+                        new_Shape_Mtx = new_Shape_Mtx[:,1:]
+                elif border == 'right':
+                    for i in range(new_Shape_Mtx.shape[0]):
+                        if new_Shape_Mtx[i][-1] != 0:
+                                new_Shape_Mtx[i][-2] = new_Shape_Mtx[i][-1]
+                                changed = True
+                    if changed:
+                        new_Shape_Mtx = new_Shape_Mtx[:,:-1]
+                        Position = (Position[0], Position[1])
                 if changed:
-                     new_Shape_Mtx = new_Shape_Mtx[:,1:]
-            elif border == 'right':
-                for i in range(new_Shape_Mtx.shape[0]):
-                     if new_Shape_Mtx[i][-1] != 0:
-                            new_Shape_Mtx[i][-2] = new_Shape_Mtx[i][-1]
-                            changed = True
-                if changed:
-                     new_Shape_Mtx = new_Shape_Mtx[:,:-1]
-                     Position = (Position[0], Position[1])
-            if changed:
-                new_obj = Object(
-                    Position=Position,
-                    Shape_Coords=obj.Shape_Coords,
-                    Color=obj.color,
-                    id=obj.id
-                )
-                new_obj.Shape_Mtx = new_Shape_Mtx
-                return new_obj
-            else:
-                 return None
+                    new_obj = Object(
+                        Position=Position,
+                        Shape_Coords=obj.Shape_Coords,
+                        Color=obj.color,
+                        id=obj.id
+                    )
+                    new_obj.Shape_Mtx = new_Shape_Mtx
+                    set.append(new_obj)
+                else:
+                    return None
+                return set
 def extract_object(task):
      grid =  Grid()
      grid.extract_Objects(task)

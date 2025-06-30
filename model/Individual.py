@@ -15,7 +15,7 @@ def print_objects(objects):
     for obj in objects:
         print(f"Object Position: {obj.Position}, Color: {obj.color}, Shape: {obj.Shape_Mtx}")
 FUNCTIONS = {
-    "Add_Object": {"arity": 2, "input_types": ['Object', 'List[Object]'], 'output_types': 'List[Object]'},
+    "Add_Object": {"arity": 2, "input_types": ['List[Object]','Object'], 'output_types': 'List[Object]'},
     "concat": {"arity": 1, "input_types": ['List[Object]'], 'output_types': 'Object'},
     "Combine": {"arity": 1, "input_types": ['List[Object]'], 'output_types': 'Object'},
     "arrange": {"arity": 1, "input_types": ['List[Object]'], 'output_types': 'List["Object"]'},
@@ -29,10 +29,13 @@ FUNCTIONS = {
     "Bot_Left_Coord": {"arity": 1, "input_types": ['Object'], 'output_types': 'Tuple[int, int]'},
     "Bot_Right_Coord": {"arity": 1, "input_types": ['Object'], 'output_types': 'Tuple[int, int]'},
     "No_Background": {"arity": 1, "input_types": ['List[Object]'], 'output_types': 'List[Object]'},
-    "mirror": {"arity": 2, "input_types": ['Object', 'str'], 'output_types': 'Object'},
+    "mirror": {"arity": 2, "input_types": ['List[Object]', 'str'], 'output_types': 'Object'},
     "place": {"arity": 2, "input_types": ['Object', 'Tuple[int, int]'], 'output_types': 'Object'},
     "exclude_object": {"arity": 2, "input_types": ['List[Object]', 'Object'], 'output_types': 'List[Object]'},
-    "Insert_Line": {"arity": 2, "input_types": ['Object', 'str'], 'output_types': 'Object'},
+    "Insert_Line_Right": {"arity": 1, "input_types": ['List[Object]'], 'output_types': 'List[Object]'},
+    "Insert_Line_Left": {"arity": 1, "input_types": ['List[Object]'], 'output_types': 'List[Object]'},
+    "Insert_Line_Top": {"arity": 1, "input_types": ['List[Object]'], 'output_types': 'List[Object]'},
+    "Insert_Line_Bottom": {"arity": 1, "input_types": ['List[Object]'], 'output_types': 'List[Object]'},
     "order_position_Right": {"arity": 2, "input_types": ['List[Object]', 'str'], 'output_types': 'List[Object]'},
     "order_position_Left": {"arity": 2, "input_types": ['List[Object]', 'str'], 'output_types': 'List[Object]'},
     "order_position_Top": {"arity": 2, "input_types": ['List[Object]', 'str'], 'output_types': 'List[Object]'},
@@ -45,9 +48,9 @@ TERMINALS = ["Object", "h", "v", "max", "min", "left", "right", "top", "bottom",
  # Assuming colors are represented by integers 0-8
 FUNC_PRIMITIVES  = [concat, Combine, arrange, updateColor, getColor, filter_by_color, filter_by_size, get_First_Object,
                     No_Background, mirror, place,order_position_Right, order_position_Left, order_position_Top, order_position_Bottom,
-                    exclude_object, Insert_Line]
-FILTER_PRIMITIVES = [filter_by_color, filter_by_size, exclude_object, order_position_Right, order_position_Left, order_position_Top, order_position_Bottom,No_Background]
-TRANSFORM_PRIMITIVES = [mirror, place, Insert_Line]
+                    exclude_object, Insert_Line_Right, Insert_Line_Left, Insert_Line_Top, Insert_Line_Bottom]
+FILTER_PRIMITIVES = [filter_by_color, filter_by_size, order_position_Right, order_position_Left, order_position_Top, order_position_Bottom,No_Background,get_First_Object]
+TRANSFORM_PRIMITIVES = [mirror, place, Insert_Line_Right, Insert_Line_Left, Insert_Line_Top, Insert_Line_Bottom,place]
 ENSEMBLE_PRIMITIVES = [concat, Combine, arrange]
 COORD_PRIMITIVES = [Top_Left_Coord, Top_Right_Coord, Bot_Left_Coord, Bot_Right_Coord]
 DICT_FUNC_WITH_ARGS = {
@@ -59,7 +62,6 @@ DICT_FUNC_WITH_ARGS = {
     order_position_Right: ["asc", "desc"],
     order_position_Top: ["asc", "desc"],
     order_position_Bottom: ["asc", "desc"],
-    Insert_Line: ["top", "bottom", "left", "right"],
     place: ["coordinates"],
     mirror: ["h", "v"],
     arrange: range(9),
@@ -165,14 +167,7 @@ class Individual:
             else:
                 raise ValueError(f"Function node at depth {depth} has invalid number of arguments ({len(args)}): {node.Value.__name__}")
 
-        
-    def Random_Instance(self, max_depth: int = 5):
-        """
-        Generates a random instance of the program tree with a maximum depth.
-        The root is always an Add_Object node.
-        """
-
-        def get_leaf_nodes(node):
+    def get_leaf_nodes(self,node):
             if not node.children:
                 return [node]
             leaves = []
@@ -180,49 +175,17 @@ class Individual:
                 if node.Value not in TERMINALS:
                     leaves.extend(get_leaf_nodes(child))
             return leaves
+    
+    def Random_Instance(self, max_depth: int = 5, in_Task=None):
+        """
+        Generates a random instance of the program tree with a maximum depth.
+        The root is always an Add_Object node.
+        """
 
+       
    
         self.Root = Node(Add_Object)
-        self._Add_Node(self.Root, max_depth)
-
-        leaves = get_leaf_nodes(self.Root)
-        #print(f"Leaf nodes found: {len(leaves)}")
-
-    
-        for leaf in leaves:
-                if leaf.Value not in TERMINALS:
-                    # two case leaf that needs object of leaf that need a object function
-                    input_types = FUNCTIONS.get(leaf.Value.__name__, {}).get("input_types", [])
-                    arity = FUNCTIONS.get(leaf.Value.__name__, {}).get("arity", 0)
-                    if input_types[0] == 'List[Object]':
-                        leaf.children.append(Node("Object"))
-                        if arity > 1:
-                            if input_types[1] == 'Object':
-                                child = Node(random.choice([func for func in FUNC_PRIMITIVES if FUNCTIONS.get(func.__name__, {}).get("output_types") == 'Object']))
-                                leaf.children.append(child)
-                                leaves.append(child)
-                            else:
-                                #complete with terminal arguments
-                                leaf.children.append(Node(DICT_FUNC_WITH_ARGS[leaf.Value][0]))
-                    elif input_types[0] == 'Object':
-                         leaf.children.append(Node(random.choice([func for func in FUNC_PRIMITIVES if FUNCTIONS.get(func.__name__, {}).get("output_types") == 'Object'])))
-                         leaves.append(leaf.children[0])
-                         if len(input_types) > 1:
-                                if input_types[1] == 'Object':
-                                    leaf.children.append(Node(random.choice([func for func in FUNC_PRIMITIVES if FUNCTIONS.get(func.__name__, {}).get("output_types") == 'Object'])))
-                                    leaves.append(leaf.children[1])
-                                elif input_types[1] == 'Tuple[int, int]':
-                                        child = Node(random.choice(COORD_PRIMITIVES))
-                                        leaf.children.append(child)
-                                        leaves.append(child)
-
-                                else:
-                                    #complete with terminal arguments
-                                        leaf.children.append(Node(DICT_FUNC_WITH_ARGS[leaf.Value][0]))
-                         
-
-                   
-
+        self._Add_Node(self.Root, max_depth,in_Task)
         return self.Root
 
         
@@ -230,91 +193,88 @@ class Individual:
 
     def _match_Args(self,function:Callable):
             return DICT_FUNC_WITH_ARGS[function]
-    def _Add_Node(self, node, max_depth):
+    def _Add_Node(self, node, depth, in_Task):
         """
-        Recursively expands `node` until `max_depth` is reached,
-        while ensuring that no child node has the same `Value`
-        (i.e. function object) as its parent.
+        Recursively expands *node* until *max_depth* reaches 0,
+        adapting the primitive set to the (in_Task, out_Task) pair.
+
+        Parameters
+        ----------
+        node : Node
+            Current node in the tree.
+        max_depth : int
+            Remaining depth budget.
+        in_Task / out_Task : user-defined task descriptors
+            Provide context for choosing terminals (e.g. extract_object).
         """
-        # ── 1. Stop if depth exhausted or node is already terminal ─────────────
-        if max_depth <= 0:
-            if hasattr(node.Value, '__name__') and node.Value.__name__ == 'Object':
-                node.Value = "Object"
+
+        # ── 1. Stop condition ──────────────────────────────────────────────
+        if depth <= 0:
+            # Turn every open leaf below *node* into a terminal of the right type
+            for leaf in self.get_leaf_nodes(node):
+                if callable(leaf.Value) and leaf.Value not in TERMINALS:
+                    meta        = FUNCTIONS[leaf.Value.__name__]
+                    input_types = meta["input_types"]
+                    arity       = meta["arity"]
+
+                    for i in range(arity):
+                        t = input_types[i]
+
+                        if t == "List[Object]":
+                            leaf.children.append(Node("Object"))
+
+                        elif t == "Object":
+                            objs = extract_object(in_Task)
+                            leaf.children.append(Node(random.choice(objs) if objs else "Object"))
+
+                        elif t == "Tuple[int, int]":
+                            leaf.children.append(Node((0, 0)))
+
+                        else:                      # generic-fallback terminal
+                            leaf.children.append(Node(random.choice(self._match_Args(leaf.Value))))
+            return   # nothing more to do at depth limit
+        # ------------------------------------------------------------------
+
+        # ── 2. Expand *this* node if it is a function ──────────────────────
+        if not callable(node.Value):     # it’s already a terminal
             return
 
-        # ── 2. Gather meta-info for the current (parent) node ──────────────────
-        if not hasattr(node.Value, '__name__'):
-            return  # nothing to expand on a literal/terminal
+        meta        = FUNCTIONS[node.Value.__name__]
+        input_types = meta["input_types"]
+        arity       = meta["arity"]
 
-        parent_func  = node.Value                         # convenience alias
-        meta         = FUNCTIONS.get(parent_func.__name__, {})
-        node_arity   = meta.get("arity", 0)
-        input_types  = meta.get("input_types", [])
+        possible_func = ENSEMBLE_PRIMITIVES + TRANSFORM_PRIMITIVES + COORD_PRIMITIVES 
+        factor = random.random()
+        if factor < 0.5:  # 20% chance to use a filter primitive
+            possible_func = FUNC_PRIMITIVES
+       
+        # ── 3. Fill every missing argument slot ────────────────────────────
+        while len(node.children) < arity:
+            idx        = len(node.children)
+            expected_t = input_types[idx]
 
-        if len(input_types) != node_arity:
-            raise ValueError(
-                f"Input types length {len(input_types)} != arity {node_arity} for {parent_func.__name__}"
-            )
-
-        # ── 3. Build each child, respecting type + NON-NEST constraint ─────────
-        for arg_idx, arg_type in enumerate(input_types):
-
-            # 3-A. Pick a candidate pool for this argument type
-            if parent_func == Add_Object:
-                pool = list(FUNC_PRIMITIVES)
-            elif arg_type in ('List[Object]', 'Object'):
-                pool = [
-                    f for f in FUNC_PRIMITIVES
-                    if FUNCTIONS.get(f.__name__, {}).get("output_types") == arg_type
+            # First argument of a filter gets only type-compatible producers
+            if idx == 0 and callable(node.Value):
+                compatible = [
+                    f for f in possible_func
+                    if FUNCTIONS[f.__name__]["output_types"] == expected_t
                 ]
-            elif arg_type == 'Tuple[int, int]':
-                pool = [
-                    f for f in COORD_PRIMITIVES
-                    if FUNCTIONS.get(f.__name__, {}).get("output_types") == arg_type
-                ]
+                child_val = random.choice(compatible) if compatible else "Object"
+
             else:
-                # use argument‐matching helper for literal/primitive choices
-                possible_args = self._match_Args(parent_func)
-                if not possible_args:
-                    raise ValueError(
-                        f"No matching arguments for {parent_func.__name__} at index {arg_idx}"
-                    )
-                if possible_args == "Object":
-                    pool = [
-                        f for f in FUNC_PRIMITIVES
-                        if FUNCTIONS.get(f.__name__, {}).get("output_types") == "Object"
-                    ]
-                elif possible_args == "coordinates":
-                    pool = list(COORD_PRIMITIVES)
-                else:  # literal constants
-                    literal_choice = random.choice(possible_args)
-                    node.children.append(Node(literal_choice))
-                    continue
+                if expected_t == "Object":
+                    child_val = random.choice(TRANSFORM_PRIMITIVES + ENSEMBLE_PRIMITIVES)
+                elif expected_t == "Tuple[int, int]":
+                    child_val = (0, 0)
+                else:
+                    # last-resort: any terminal known to fit *expected_t*
+                    child_val = random.choice(DICT_FUNC_WITH_ARGS[node.Value])
 
-            # 3-B. Enforce the NON-NEST rule ➜ drop the parent from the pool
-            pool = [f for f in pool if f != parent_func]
+            node.children.append(Node(child_val))
 
-            # 3-C. If empty, attempt a broader fallback (same output type)
-            if not pool:
-                desired_out = FUNCTIONS.get(parent_func.__name__, {}).get("output_types")
-                pool = [
-                    f for f in FUNC_PRIMITIVES + COORD_PRIMITIVES
-                    if f != parent_func
-                    and FUNCTIONS.get(f.__name__, {}).get("output_types") == desired_out
-                ]
-
-            if not pool:
-                raise ValueError(
-                    f"No suitable child functions for type {arg_type} "
-                    f"without duplicating parent {parent_func.__name__}"
-                )
-
-            # 3-D. Pick and attach the child
-            node.children.append(Node(random.choice(pool)))
-
-        # ── 4. Recurse on children (depth-1) ───────────────────────────────────
+        # ── 4. Recurse on children (depth-1) ───────────────────────────────
         for child in node.children:
-            self._Add_Node(child, max_depth - 1)
+            self._Add_Node(child, depth - 1, in_Task)
 
 
 
@@ -367,7 +327,10 @@ filter_by_size_Node = Node(filter_by_size, No_Background_Node_2, Node("max"))
 exlude_Object_Node = Node(exclude_object, No_Background_Node_3, filter_by_size_Node)
 O = Add_Object_Node = Node(Add_Object, exlude_Object_Node,Insert_Line_Node_4 )
 '''
-
-'''Ind = Individual()
-Ind.Random_Instance()
-Ind.Show_Tree().render('tree', format='pdf', cleanup=True,view= True)'''
+Grid_dict = {}
+with open(r"../data/training/6fa7a44f.json", 'r') as file:
+        Grid_dict = json.load(file)       
+in_Task,out_Task = Grid_dict["train"][0]["input"], Grid_dict["train"][0]["output"]
+Ind = Individual()
+Ind.Random_Instance(max_depth=3, in_Task=in_Task)
+Ind.Show_Tree().render('tree', format='pdf', cleanup=True)

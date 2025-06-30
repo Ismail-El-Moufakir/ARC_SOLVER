@@ -10,13 +10,13 @@ from Dsl import *
 import copy 
 from Individual import *
 #____________________PARAMETERS____________________
-POPPULATION_SIZE = 500
-OFFSPRING_SIZE = 1000
+POPPULATION_SIZE = 30000
+OFFSPRING_SIZE = 20000
 GENERATIOON_SIZE = 10
 CROSSOVER_RATE = 0.7
 
 ELIT_RATE = 0.3
-ELIT_SIZE = 0.05
+ELIT_SIZE = 0.1
 #______________________________________UTILS________________________________________
 Ops_FACTOR = 0.2
 def get_leaf_nodes(node):
@@ -30,13 +30,13 @@ def get_leaf_nodes(node):
 
 
 class Genetic_Prog:
-    def __init__(self,population_size = 5, Generation_Count = 5,max_depth = 3):
+    def __init__(self,population_size = 5, Generation_Count = 5,max_depth = 5,input_task = None):
         self.population_size = population_size
         self.max_depth = max_depth
         self.Population = []
         for i in range(self.population_size):
             ind = Individual()
-            ind.Random_Instance(max_depth = self.max_depth)
+            ind.Random_Instance(max_depth = self.max_depth, in_Task=input_task)
             ind.Id = i
             self.Population.append(ind)
     def _match_Args(self,function:Callable):
@@ -74,7 +74,7 @@ class Genetic_Prog:
 
             node.Value = random.choice(compatibles)
             node.children = []
-            print("compatible ops are:", [f.__name__ for f in compatibles])
+            #print("compatible ops are:", [f.__name__ for f in compatibles])
 
             # complete the subtree
             q: deque[tuple["Node", int]] = deque([(node, depth)])
@@ -113,7 +113,7 @@ class Genetic_Prog:
         def Complete_tree(Ind: Individual):
             #check if the tree is good and complete with args if it's necessary      
             Leafs = get_leaf_nodes(Ind.Root)
-            print("Leafs are:", [leaf.Value for leaf in Leafs])
+            #print("Leafs are:", [leaf.Value for leaf in Leafs])
             for leaf in Leafs:
                 if not callable(leaf.Value):
                     continue
@@ -150,7 +150,7 @@ class Genetic_Prog:
 
             if depth >= random_depth:
                 if random.random() >= 0.5 and callable(current.Value):
-                    print(f"Mutating node {current.Value.__name__} at depth {depth}")
+                    #print(f"Mutating node {current.Value.__name__} at depth {depth}")
                     _build_subtree(current, depth)
                     Complete_tree(Child)
                     return Child
@@ -288,7 +288,7 @@ class Genetic_Prog:
     *,
     # ---------- pixel-wise scoring -------------------------------------------
     empty_val: int      = 0,
-    tp_reward: float    = 2,
+    tp_reward: float    = 4,
     fp_penalty: float   = 1,
     fn_penalty: float   = 1,
     shape_weight: float = 10,    # penalty multiplier for shape mismatch
@@ -308,21 +308,21 @@ class Genetic_Prog:
         try:
             O = ind.execute(in_task)
         except Exception as e:
-            print(f"[fitness] Execution error: {e}")
+            #print(f"[fitness] Execution error: {e}")
             return invalid_score
 
         # ---------------------------------------------------------------- 2) grid
         try:
             if getattr(O, "Layers", None) is None:
-                print("[fitness] Output has no Layers")
+                #print("[fitness] Output has no Layers")
                 return invalid_score
             pred_grid = np.asarray(O.construct_grid())
         except Exception as e:
-            print(f"[fitness] Grid construction error: {e}")
+            #print(f"[fitness] Grid construction error: {e}")
             return invalid_score
 
         target_grid = np.asarray(out_task)
-        print(f"[fitness] sucessfuly individual {ind.Id} executed and constructed grid")
+        #print(f"[fitness] sucessfuly individual {ind.Id} executed and constructed grid")
         # ---------------------------------------------------------------- 3) shape
         d_rows = abs(pred_grid.shape[0] - target_grid.shape[0])
         d_cols = abs(pred_grid.shape[1] - target_grid.shape[1])
@@ -480,7 +480,7 @@ class Genetic_Prog:
 
         # (optional) diagnostics
         best10 = [self.scores[ind.Id] for ind in survivors[:10]]
-        print(f"Top 10 scores after elitist (μ+λ): {best10}")
+        #print(f"Top 10 scores after elitist (μ+λ): {best10}")
 
         return survivors
     def train(self,in_task,out_task):
