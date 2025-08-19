@@ -10,13 +10,12 @@ from Dsl import *
 import copy 
 from Individual import *
 #____________________PARAMETERS____________________
-POPPULATION_SIZE = 500
-OFFSPRING_SIZE = 1000
-GENERATIOON_SIZE = 10
+POPPULATION_SIZE = 4000
+OFFSPRING_SIZE = 4000
+GENERATIOON_SIZE = 15
 CROSSOVER_RATE = 0.7
 
-ELIT_RATE = 0.3
-ELIT_SIZE = 0.05
+
 #______________________________________UTILS________________________________________
 Ops_FACTOR = 0.2
 def get_leaf_nodes(node):
@@ -30,13 +29,13 @@ def get_leaf_nodes(node):
 
 
 class Genetic_Prog:
-    def __init__(self,population_size = 5, Generation_Count = 5,max_depth = 3):
+    def __init__(self,population_size = 5, Generation_Count = 5,max_depth = 5,input_task = None):
         self.population_size = population_size
         self.max_depth = max_depth
         self.Population = []
         for i in range(self.population_size):
             ind = Individual()
-            ind.Random_Instance(max_depth = self.max_depth)
+            ind.Random_Instance(max_depth = self.max_depth, in_Task=input_task)
             ind.Id = i
             self.Population.append(ind)
     def _match_Args(self,function:Callable):
@@ -74,7 +73,7 @@ class Genetic_Prog:
 
             node.Value = random.choice(compatibles)
             node.children = []
-            print("compatible ops are:", [f.__name__ for f in compatibles])
+            #print("compatible ops are:", [f.__name__ for f in compatibles])
 
             # complete the subtree
             q: deque[tuple["Node", int]] = deque([(node, depth)])
@@ -113,7 +112,7 @@ class Genetic_Prog:
         def Complete_tree(Ind: Individual):
             #check if the tree is good and complete with args if it's necessary      
             Leafs = get_leaf_nodes(Ind.Root)
-            print("Leafs are:", [leaf.Value for leaf in Leafs])
+            #print("Leafs are:", [leaf.Value for leaf in Leafs])
             for leaf in Leafs:
                 if not callable(leaf.Value):
                     continue
@@ -150,7 +149,7 @@ class Genetic_Prog:
 
             if depth >= random_depth:
                 if random.random() >= 0.5 and callable(current.Value):
-                    print(f"Mutating node {current.Value.__name__} at depth {depth}")
+                    #print(f"Mutating node {current.Value.__name__} at depth {depth}")
                     _build_subtree(current, depth)
                     Complete_tree(Child)
                     return Child
@@ -182,7 +181,7 @@ class Genetic_Prog:
 
                 out_type = FUNCTIONS.get(node.Value.__name__, {}).get("output_types")
                 compatibles = [
-                    f for f in ENSEMBLE_PRIMITIVES + TRANSFORM_PRIMITIVES
+                    f for f in FUNC_PRIMITIVES
                     if f is not node.Value
                     and FUNCTIONS.get(f.__name__, {}).get("output_types") == out_type
                 ]
@@ -288,7 +287,7 @@ class Genetic_Prog:
     *,
     # ---------- pixel-wise scoring -------------------------------------------
     empty_val: int      = 0,
-    tp_reward: float    = 2,
+    tp_reward: float    = 4,
     fp_penalty: float   = 1,
     fn_penalty: float   = 1,
     shape_weight: float = 10,    # penalty multiplier for shape mismatch
@@ -308,21 +307,21 @@ class Genetic_Prog:
         try:
             O = ind.execute(in_task)
         except Exception as e:
-            print(f"[fitness] Execution error: {e}")
+            #print(f"[fitness] Execution error: {e}")
             return invalid_score
 
         # ---------------------------------------------------------------- 2) grid
         try:
             if getattr(O, "Layers", None) is None:
-                print("[fitness] Output has no Layers")
+                #print("[fitness] Output has no Layers")
                 return invalid_score
             pred_grid = np.asarray(O.construct_grid())
         except Exception as e:
-            print(f"[fitness] Grid construction error: {e}")
+            #print(f"[fitness] Grid construction error: {e}")
             return invalid_score
 
         target_grid = np.asarray(out_task)
-        print(f"[fitness] sucessfuly individual {ind.Id} executed and constructed grid")
+        #print(f"[fitness] sucessfuly individual {ind.Id} executed and constructed grid")
         # ---------------------------------------------------------------- 3) shape
         d_rows = abs(pred_grid.shape[0] - target_grid.shape[0])
         d_cols = abs(pred_grid.shape[1] - target_grid.shape[1])
@@ -380,7 +379,7 @@ class Genetic_Prog:
         for ind in self.Population:
             score = self.Fitness(ind, in_Task, out_Task,max_depth=self.max_depth)
             ind.Id = i
-            self.scores.append(score)
+            ind.score = score
             i+= 1
             #print(f"Individual {ind.Id} score: {score}")       
     def Tournament_selection(self, k: int = 2, tournament_size: int = 3):
@@ -404,7 +403,7 @@ class Genetic_Prog:
         
         for _ in range(k):
             tournament = random.sample(pop, min(tournament_size, len(pop)))
-            winner = max(tournament, key=lambda ind: self.scores[ind.Id])
+            winner = max(tournament, key=lambda ind: ind.score)
             selected.append(winner)
 
         return selected   
@@ -427,21 +426,14 @@ class Genetic_Prog:
 
         # ---------------------------------------------------------------- A) rank parents & copy the elites
         # make sure every parent has a fitness score first
-        for ind in self.Population:
-            if ind.Id not in self.scores:
-                self.scores[ind.Id] = self.Fitness(ind, in_Task, out_Task)
 
-        e = (max(1, round(μ * ELITISM))            # fraction
-            if isinstance(ELITISM, float) else
-            max(1, min(int(ELITISM), μ)))         # absolute count
 
+ 
         ranked_parents = sorted(self.Population,
-                                key=lambda ind: self.scores[ind.Id],
+                                key=lambda ind: ind.score,
                                 reverse=True)
 
-        elites = [copy.deepcopy(ind) for ind in ranked_parents[:e]]
-        for ind in elites:                         # optional marker
-            ind.is_elite = True
+    
 
         # ---------------------------------------------------------------- B) create λ offspring
         offspring: list[Individual] = []
@@ -462,15 +454,15 @@ class Genetic_Prog:
 
         # ---------------------------------------------------------------- C) evaluate offspring
         for ind in offspring:
-            self.scores[ind.Id] = self.Fitness(ind, in_Task, out_Task)
+            ind.score = self.Fitness(ind, in_Task, out_Task)
 
         # ---------------------------------------------------------------- D) build the next generation
         #  – elites are *always* kept
         #  – remaining μ-e slots go to the best of (non-elite parents ∪ offspring)
-        candidates = ranked_parents[e:] + offspring
-        candidates.sort(key=lambda ind: self.scores[ind.Id], reverse=True)
+        candidates = ranked_parents + offspring
+        candidates.sort(key=lambda ind: ind.score, reverse=True)
 
-        survivors = elites + candidates[:μ - e]               # exact size μ
+        survivors =  candidates[:μ]               # exact size μ
 
         # neat, dense Ids again
         for new_id, ind in enumerate(survivors):
@@ -478,20 +470,14 @@ class Genetic_Prog:
 
         self.Population = survivors
 
-        # (optional) diagnostics
-        best10 = [self.scores[ind.Id] for ind in survivors[:10]]
-        print(f"Top 10 scores after elitist (μ+λ): {best10}")
-
+        self.evaluate_population(in_Task, out_Task)  # re-evaluate survivors
         return survivors
     def train(self,in_task,out_task):
-         Best_score_over_gen = []
-         for generaton in range(GENERATIOON_SIZE):
             self.evaluate_population(in_task, out_task)
-            print(f"Generation {generaton + 1}/{GENERATIOON_SIZE} best score: {max(self.scores)} ------------------------------------------------------------")
-            max_score = np.max(self.scores)
-            Best_score_over_gen.append(max_score)
             self.new_population(in_task, out_task, OFFSPRING_SIZE=OFFSPRING_SIZE)
-         return Best_score_over_gen
+            scores = [ind.score for ind in self.Population]
+            return scores
+        
 
 
 '''#example usage

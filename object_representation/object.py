@@ -15,47 +15,70 @@ class Object:
 class Grid:
     def __init__(self):
         self.Layers = []
-    def extract_Objects(self, grid):
+    from collections import deque
+
+    def extract_Objects(self, grid, with_color: bool = True):
+        """
+        Populate self.Layers with connected-component Objects.
+
+        Parameters
+        ----------
+        grid : list[list[int] | list[list[tuple]]]
+            2-D image / mask. Each cell is a colour value or label.
+        with_color : bool, optional
+            If True (default) cluster by both 8-adjacency *and* colour.
+            If False, cluster only by 8-adjacency (colour is ignored).
+        """
         self.Layers = []
-        visited = [[False for _ in range(len(grid[0]))] for _ in range(len(grid))]
+        visited = [[False] * len(grid[0]) for _ in range(len(grid))]
         obj_id = 0
 
-        def get_neighbors(i, j):
-            # 4-connectivity: up, down, left, right, and corners
-            for dx, dy in [(-1,0), (1,0), (0,-1), (0,1),(-1,-1),(1,1),(-1,1),(1,-1)]:
-                ni, nj = i + dx, j + dy
+        # Pre-computed neighbour offsets for 8-connectivity
+        neigh = [(-1, 0), (1, 0), (0, -1), (0, 1),
+                (-1, -1), (1, 1), (-1, 1), (1, -1)]
+
+        def neighbours(i, j):
+            for di, dj in neigh:
+                ni, nj = i + di, j + dj
                 if 0 <= ni < len(grid) and 0 <= nj < len(grid[0]):
                     yield ni, nj
 
         for i in range(len(grid)):
             for j in range(len(grid[0])):
-                if not visited[i][j]:
-                    color = grid[i][j]
-                    queue = deque()
-                    queue.append((i, j))
-                    visited[i][j] = True
-                    pixels = [(i, j)]
+                if visited[i][j] or grid[i][j] == 0:
+                    continue
 
-                    # BFS to collect all connected pixels of the same color
-                    while queue:
-                        x, y = queue.popleft()
-                        for ni, nj in get_neighbors(x, y):
-                            if not visited[ni][nj] and grid[ni][nj] == color:
-                                visited[ni][nj] = True
-                                queue.append((ni, nj))
-                                pixels.append((ni, nj))
+                base_color = grid[i][j]
+                queue = deque([(i, j)])
+                visited[i][j] = True
+                pixels = [(i, j)]
 
-                    # Create object only if color is not background 
-                    obj = Object(
-                        Position=(i, j),
-                        Shape_Coords=pixels,
-                        Color=color,
-                        id=obj_id
-                    )
-                    self.Layers.append(obj)
-                    obj_id += 1
-        # Calculate the shape matrix for each object
+                # Breadth-first search over the component
+                while queue:
+                    x, y = queue.popleft()
+                    for ni, nj in neighbours(x, y):
+                        if visited[ni][nj]:
+                            continue
+                        if with_color and grid[ni][nj] != base_color:
+                            continue
+
+                        visited[ni][nj] = True
+                        queue.append((ni, nj))
+                        pixels.append((ni, nj))
+
+                # Build the Object and add it to the layer list
+                obj = Object(
+                    Position=(i, j),
+                    Shape_Coords=pixels,
+                    Color=base_color,
+                    id=obj_id
+                )
+                self.Layers.append(obj)
+                obj_id += 1
+
+        # Re-compute shape matrices for every object
         self.Shape_Mtx()
+
     def Shape_Mtx(self):
             for obj in self.Layers:
                 # Find the minimum coordinates to ensure top-left positioning
@@ -79,43 +102,47 @@ class Grid:
     import numpy as np
 
     def construct_grid(self, pad: int = 0) -> np.ndarray:
-    
+        """
+        Compose every Object in `self.Layers` into one 2-D numpy array.
+        A non-zero cell painted by a later object *always* overwrites
+        whatever was there before (“top most wins”).
+        """
         if not self.Layers:
-            # Nothing to draw → empty array
             return np.zeros((0, 0), dtype=int)
 
-        # -----------------------------------------------------------------
-        #  Find the global bounding-box of *all* objects
-        # -----------------------------------------------------------------
-        top    = min(o.Position[0] for o in self.Layers) - pad
-        left   = min(o.Position[1] for o in self.Layers) - pad
-        bottom = max(o.Position[0] + o.Shape_Mtx.shape[0] for o in self.Layers) + pad
-        right  = max(o.Position[1] + o.Shape_Mtx.shape[1] for o in self.Layers) + pad
+        # --------------------------------------------------------------
+        # 1) Compute global bounding-box plus optional padding
+        # --------------------------------------------------------------
+        tops    = [o.Position[0]                      for o in self.Layers]
+        lefts   = [o.Position[1]                      for o in self.Layers]
+        bottoms = [o.Position[0] + o.Shape_Mtx.shape[0] for o in self.Layers]
+        rights  = [o.Position[1] + o.Shape_Mtx.shape[1] for o in self.Layers]
 
-        H, W = bottom - top, right - left
-        grid_Mtx = np.zeros((H, W), dtype=self.Layers[0].Shape_Mtx.dtype)
-        #print(f"Constructing grid of size {H}×{W}")
+        top,    left  = min(tops)    - pad, min(lefts)  - pad
+        bottom, right = max(bottoms) + pad, max(rights) + pad
 
-        # -----------------------------------------------------------------
-        #  Blit every layer onto the canvas in order
-        # -----------------------------------------------------------------
+        H, W  = bottom - top, right - left
+        dtype = np.result_type(*(o.Shape_Mtx.dtype for o in self.Layers))
+        grid  = np.zeros((H, W), dtype=dtype)
+
+        # --------------------------------------------------------------
+        # 2) Blit layers in their stored order — later == “above”
+        # --------------------------------------------------------------
         for obj in self.Layers:
             r0, c0 = obj.Position
-            r0 -= top          
+            r0 -= top
             c0 -= left
-            h, w = obj.Shape_Mtx.shape
+
+            h, w  = obj.Shape_Mtx.shape
             r1, c1 = r0 + h, c0 + w
 
-            # -- compositing rule -----------------------------------------
-            sel = obj.Shape_Mtx != 0                # skip background pixels
-            grid_slice = grid_Mtx[r0:r1, c0:c1]
-            grid_slice[sel] = obj.Shape_Mtx[sel]    # ← overwrite
-            # --------------------------------------------------------------
+            slice_ = grid[r0:r1, c0:c1]
+            mask   = obj.Shape_Mtx != 0           # draw only visible cells
+            slice_[mask] = obj.Shape_Mtx[mask]    # ← overwrite: top wins
 
-        # Optional: update self.h / self.w so the rest of the class knows
-        # the new, dynamic size.
+        # (optional) expose final canvas size
         self.h, self.w = H, W
-        return grid_Mtx
+        return grid
 
 
 '''

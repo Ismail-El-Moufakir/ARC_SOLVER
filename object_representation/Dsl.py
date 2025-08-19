@@ -186,14 +186,17 @@ def mirror(obj:Object, axis:str):
      --> obj
      '''
      new_Shape_Mtx = []
+     position = obj.Position
      if axis not in ['h', 'v']:
           raise TypeError("Axis must be 'h' for horizontal or 'v' for vertical.")
      if axis == 'h':
           new_Shape_Mtx = np.flipud(obj.Shape_Mtx)
+          position = (obj.Position[0] + obj.Shape_Mtx.shape[0] - 1, obj.Position[1])
      elif axis == 'v':
           new_Shape_Mtx = np.fliplr(obj.Shape_Mtx)
+          position = (obj.Position[0], obj.Position[1] + obj.Shape_Mtx.shape[1] - 1)
      new_obj = Object(
-          Position=obj.Position,
+          Position=position,
           Shape_Coords=obj.Shape_Coords,
           Color=obj.color,
           id=obj.id
@@ -295,44 +298,59 @@ def Insert_Between(objs: List["Object"],
 
 
 #ensembling 
-def concat(Set: list[Object]):
-    '''
-    Concatenate a set of objects into a single object.
-    '''
-    if not Set:
+import numpy as np
+
+def concat(objs: list["Object"]) -> "Object":
+    """
+    Concatenate a list of Object instances into a single Object.
+    - Keeps colour information for every occupied cell.
+    - Creates the minimal-size Shape_Mtx (no empty outer rows/cols).
+    - Sets Position to the (row, col) of the matrix’ new upper-left corner.
+    """
+    if not objs:
         raise ValueError("The set is empty.")
 
-    dic_coord_color = {}
-    for obj in Set:
-         #dict for coord assigning colors
-         for coor in obj.Shape_Coords:
-              dic_coord_color[coor] = obj.color
-    new_set_Coord = set(dic_coord_color.keys())
-    #Reconstruct Mtx shape
-    Shape_Mtx = []
-    Max_i, Max_j = max(new_set_Coord,key = lambda x : x[0])[0],max(new_set_Coord,key = lambda x : x[1])[1] 
-    Min_i, Min_j = min(new_set_Coord,key = lambda x : x[0])[0],min(new_set_Coord,key = lambda x : x[1])[1] 
-    r,c = abs(Max_i - Min_i)+1,abs(Max_j - Min_j)+1
-    Mtx = np.zeros((r,c))
-    for coord in new_set_Coord:
-          Mtx[coord[0] - Min_i][coord[1] - Min_j] = dic_coord_color[coord]
-     #return new object
-    new_obj = Object(
-          Position=(Min_i, Min_j),
-          Shape_Coords=list(new_set_Coord),
-          Color=-1,  # -1 indicates a concatenated object
-          id=0  # Assuming a new ID for the concatenated object
-     )
-  
-    Mtx = Mtx[np.any(Mtx != 0, axis=1)]  # Remove empty rows
-    Mtx = Mtx[:, np.any(Mtx != 0, axis=0)]  # Remove empty columns
-    #update Position
-    diff_r = r - Mtx.shape[0]
-    diff_c = c - Mtx.shape[1]
-    new_obj.Position = (Min_i + (diff_r // 2)-1, Min_j + (diff_c // 2)-1)
+    # --- collect absolute coordinates and their colour ---
+    coord_colour: dict[tuple[int, int], int] = {}
+    for obj in objs:
+        for xy in obj.Shape_Coords:
+            coord_colour[xy] = obj.color           # later objects overwrite earlier ones
 
-    new_obj.Shape_Mtx = Mtx
+    # --- bounding box of all occupied cells ---
+    rows, cols = zip(*coord_colour)              # unpack once
+    min_r, max_r = min(rows), max(rows)
+    min_c, max_c = min(cols), max(cols)
+
+    H, W = max_r - min_r + 1, max_c - min_c + 1  # full bounding-box size
+    mtx = np.zeros((H, W), dtype=int)
+
+    for (r, c), col in coord_colour.items():
+        mtx[r - min_r, c - min_c] = col          # shift into local coords
+
+    # --- trim *leading* / *trailing* empty rows & cols only ---
+    occ_rows = np.where(mtx.any(axis=1))[0]      # indexes with at least one coloured cell
+    occ_cols = np.where(mtx.any(axis=0))[0]
+
+    top, bottom = occ_rows[0], occ_rows[-1]
+    left, right = occ_cols[0], occ_cols[-1]
+
+    trimmed = mtx[top:bottom + 1, left:right + 1]
+
+    # --- rebuild absolute coordinates after the trim ---
+    new_shape_coords = [
+        (r - top + min_r, c - left + min_c)      # back to global grid
+        for (r, c) in coord_colour
+    ]
+
+    new_obj = Object(
+        Position=(min_r + top, min_c + left),     # real upper-left corner
+        Shape_Coords=new_shape_coords,
+        Color=-1,                                 # -1 marks a merged object
+        id=0                                      # assign ID as you see fit
+    )
+    new_obj.Shape_Mtx = trimmed
     return new_obj
+
 def Combine(objs: List["Object"]) -> "Object":
     """
     Combine several pattern objects into ONE by *re-positioning* them
@@ -487,6 +505,15 @@ def arrange(objs: List["Object"], spacing: int = 0) -> List["Object"]:
 
     return arranged
 #operations
+def Insert_Line_Right(obj:Object):
+    return Insert_Line(obj, 'right')
+def Insert_Line_Left(obj:Object):
+    return Insert_Line(obj, 'left')
+def Insert_Line_Top(obj:Object):
+    return Insert_Line(obj, 'top')
+def Insert_Line_Bottom(obj:Object):
+    return Insert_Line(obj, 'bottom')
+
 def Insert_Line(obj: Object, border: str):
      if border not in ['top', 'bottom', 'left', 'right']:
           raise ValueError("Border must be one of: 'top', 'bottom', 'left', 'right'.")
@@ -537,9 +564,9 @@ def Insert_Line(obj: Object, border: str):
                 return new_obj
             else:
                  return None
-def extract_object(task):
+def extract_object(task, with_color: bool = True) -> List[Object]:
      grid =  Grid()
-     grid.extract_Objects(task)
+     grid.extract_Objects(task, with_color=with_color)
      return grid.Layers
 def Add_Object(*obj: Object):
      '''

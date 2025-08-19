@@ -1,0 +1,11 @@
+{
+  "accuracy": -1,
+  "predicted_shape": [
+    4,
+    3
+  ],
+  "target_shape": [
+    6,
+    3
+  ]
+}
